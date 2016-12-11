@@ -47,13 +47,13 @@ func (n *Nexus) Serve(ws *websocket.Conn) {
 		for {
 			select {
 			case msg := <-client.messageChan:
-				logrus.Printf("sending message %v to %v", msg, client)
+				// logrus.Printf("sending message %v to %v", msg, client)
 				err := websocket.JSON.Send(ws, msg)
 				if err != nil {
-					logrus.Printf("error writing to websocket %v", msg)
+					logrus.Debugf("error writing to websocket %v", msg)
 				}
 			case <-client.context.Done():
-				logrus.Printf("stopping websocket write loop due to context closed")
+				logrus.Debugf("stopping websocket write loop due to context closed")
 				return
 			}
 		}
@@ -63,7 +63,7 @@ func (n *Nexus) Serve(ws *websocket.Conn) {
 	for {
 		select {
 		case <-client.context.Done():
-			logrus.Printf("stopping websocket read loop due to context closed")
+			logrus.Debugf("stopping websocket read loop due to context closed")
 			return
 		default:
 			p := Packet{}
@@ -77,11 +77,11 @@ func (n *Nexus) Serve(ws *websocket.Conn) {
 				logrus.Println(err)
 				continue
 			}
-			logrus.Printf("received message %v from %v", p, client)
+			// logrus.Printf("received message %v from %v", p, client)
 
 			handler, ok := n.handlers[p.Type]
 			if !ok {
-				logrus.Warnf("handler %s does not exist", p.Type)
+				logrus.Warnf("handler %s does not exist", p.Type, client.name)
 				continue
 			} else {
 				handler(client, &p)
