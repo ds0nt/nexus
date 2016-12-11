@@ -22,6 +22,10 @@ func NewNexus() *Nexus {
 	return &n
 }
 
+func (n *Nexus) All() *Pool {
+	return n.all
+}
+
 func (n *Nexus) Handle(t string, handler Handler) {
 	n.handlersMu.Lock()
 	defer n.handlersMu.Unlock()
