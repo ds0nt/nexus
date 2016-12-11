@@ -81,7 +81,7 @@ func (n *Nexus) Serve(ws *websocket.Conn) {
 
 			handler, ok := n.handlers[p.Type]
 			if !ok {
-				logrus.Warnf("handler %s does not exist", p.Type, client.name)
+				logrus.Debugf("handler %s does not exist", p.Type, client.name)
 				continue
 			} else {
 				handler(client, &p)

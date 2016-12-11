@@ -1,10 +1,6 @@
 package nexus
 
-import (
-	"sync"
-
-	"github.com/Sirupsen/logrus"
-)
+import "sync"
 
 type Pool struct {
 	Name        string
@@ -34,7 +30,6 @@ func (p *Pool) Remove(c *Client) {
 }
 
 func (p *Pool) Broadcast(packet *Packet) {
-	logrus.Printf("broadcasting packet %v", packet)
 	for c, _ := range p.clientMap {
 		c.messageChan <- packet
 	}
