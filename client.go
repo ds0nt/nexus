@@ -11,6 +11,7 @@ type Client struct {
 	context     context.Context
 	cancel      context.CancelFunc
 	messageChan chan *Packet
+	Env         map[interface{}]interface{}
 }
 
 func newClient(conn *ws.Conn) *Client {
@@ -20,12 +21,17 @@ func newClient(conn *ws.Conn) *Client {
 		context:     ctx,
 		cancel:      cancel,
 		messageChan: make(chan *Packet, 100),
+		Env:         make(map[interface{}]interface{}),
 	}
 }
 
 func (c *Client) close() {
 	c.cancel()
 	close(c.messageChan)
+}
+
+func (c *Client) Send(p *Packet) {
+	c.messageChan <- p
 }
 
 func (c *Client) String() string {

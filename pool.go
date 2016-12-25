@@ -2,11 +2,19 @@ package nexus
 
 import "sync"
 
-type Pool struct {
-	Name        string
-	clientMapMu sync.Mutex
-	clientMap   map[*Client]bool
-}
+type (
+	JoinHandler  func(p *Pool, c *Client)
+	LeaveHandler func(p *Pool, c *Client)
+	Pool         struct {
+		Name           string
+		clientMapMu    sync.Mutex
+		clientMap      map[*Client]bool
+		joinHandlers   []JoinHandler
+		joinMu         sync.Mutex
+		removeHandlers []LeaveHandler
+		removeMu       sync.Mutex
+	}
+)
 
 func NewPool() *Pool {
 	return &Pool{
@@ -17,16 +25,20 @@ func NewPool() *Pool {
 
 func (p *Pool) Add(c *Client) {
 	p.clientMapMu.Lock()
-	defer p.clientMapMu.Unlock()
-
 	p.clientMap[c] = true
+	p.clientMapMu.Unlock()
+	for _, h := range p.joinHandlers {
+		h(p, c)
+	}
 }
 
 func (p *Pool) Remove(c *Client) {
 	p.clientMapMu.Lock()
-	defer p.clientMapMu.Unlock()
-
 	delete(p.clientMap, c)
+	p.clientMapMu.Unlock()
+	for _, h := range p.removeHandlers {
+		h(p, c)
+	}
 }
 
 func (p *Pool) Broadcast(packet *Packet) {
@@ -37,4 +49,16 @@ func (p *Pool) Broadcast(packet *Packet) {
 
 func (p *Pool) String() {
 
+}
+
+func (p *Pool) AfterAdd(handler JoinHandler) {
+	p.joinMu.Lock()
+	p.joinHandlers = append(p.joinHandlers, handler)
+	p.joinMu.Unlock()
+}
+
+func (p *Pool) AfterRemove(handler LeaveHandler) {
+	p.joinMu.Lock()
+	p.removeHandlers = append(p.removeHandlers, handler)
+	p.joinMu.Unlock()
 }
