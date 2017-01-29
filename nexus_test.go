@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"testing"
+	"time"
 
 	"golang.org/x/net/websocket"
 )
@@ -90,6 +91,10 @@ func TestNexusTwice(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
+	err = ws.SetReadDeadline(time.Now().Add(time.Millisecond * 10))
+	if err != nil {
+		panic(err)
+	}
 	p := Packet{
 		Type: "test1",
 		Data: "rawr",
@@ -128,5 +133,61 @@ func TestNexusTwice(t *testing.T) {
 		return
 	}
 
+	ws.Close()
+}
+
+func TestNexusBadMessage(t *testing.T) {
+
+	ws, err := websocket.Dial(testDialAddr, "", testOrigin)
+	if err != nil {
+		panic(err)
+	}
+	err = ws.SetReadDeadline(time.Now().Add(time.Millisecond * 10))
+	if err != nil {
+		panic(err)
+	}
+	p := "this-is-not-a-packet-at-all"
+	log.Printf("Sending %v", p)
+	err = websocket.JSON.Send(ws, p)
+	if err != nil {
+		panic(err)
+	}
+	err = websocket.JSON.Receive(ws, &p)
+	if err == nil {
+		panic("Expected error")
+	}
+	log.Printf("Expects error: got %v", err)
+
+	ws.Close()
+}
+
+func TestNexusBadHandler(t *testing.T) {
+
+	ws, err := websocket.Dial(testDialAddr, "", testOrigin)
+	if err != nil {
+		panic(err)
+	}
+	err = ws.SetReadDeadline(time.Now().Add(time.Millisecond * 10))
+	if err != nil {
+		panic(err)
+	}
+
+	p := Packet{
+		Type: "got handler???",
+		Data: "nope.",
+	}
+	log.Printf("Sending %v", p)
+	err = websocket.JSON.Send(ws, &p)
+	if err != nil {
+		panic(err)
+	}
+
+	// connection should stay alive
+	err = websocket.JSON.Receive(ws, &p)
+	if err == nil {
+		panic("Expected read timeout error")
+	}
+	log.Printf("Receive %v", p)
+	log.Printf("Expects read error: got %v", err)
 	ws.Close()
 }
