@@ -75,7 +75,7 @@ func (n *Nexus) Serve(ws *websocket.Conn) {
 					return
 				}
 				logrus.Println(err)
-				continue
+				return
 			}
 			// logrus.Printf("received message %v from %v", p, client)
 
