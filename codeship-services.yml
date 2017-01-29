@@ -1,4 +1,4 @@
-project_name:
+nexus:
   build:
     image: nexus
     dockerfile_path: Dockerfile
