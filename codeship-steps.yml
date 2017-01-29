@@ -1,0 +1,2 @@
+- service: nexus
+  command: bash -c "go test ./..."
