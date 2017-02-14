@@ -57,6 +57,66 @@ func InitHub(db *storm.DB, mailerClient proto.MailerClient, containerClient cont
 
 		}
 	})
+	
+	
+func (h *Hub) handleToken(c *nexus.Client, p *nexus.Packet) {
+	log.Println("handle token")
+	in := tokenIn{}
+	err := json.Unmarshal([]byte(p.Data), &in)
+	if err != nil {
+		log.Println("handleToken err unmarshalling", p.Data, err)
+		return
+	}
+	c.Env["token"] = in.Token
+	c.Env["authorized"] = jwt.Authorized(in.Token)
+	user := ChatUser{
+		Name: c.Env["authorized"].(string),
+		Exec: make(chan string, 10),
+	}
+	c.Env["user"] = &user
+	log.Println("authorized", user.Name)
+	for u, _ := range allUsers {
+		c.Send(buildJoinUserPacket(u))
+	}
+	allUsersMu.Lock()
+	allUsers[&user] = true
+	allUsersMu.Unlock()
+	h.Hub.All().Broadcast(buildJoinUserPacket(&user))
+
+	for u, ch := range channelsByName {
+		c.Send(ircJoinPacket(ch.Nick, u))
+	}
+	chats := []savedChat{}
+	err = h.db.All(&chats)
+	if err != nil {
+		log.Println("handleJoin err looking up saved chats", p.Data, err)
+		return
+	}
+
+	data, _ := json.Marshal(&TTYResponse{"http://tty.ds0nt.com"})
+	c.Send(&nexus.Packet{
+		Type: "tty",
+		Data: string(data),
+	})
+
+	l := int64(len(chats))
+	i := l - 50
+	if i < 0 {
+		i = 0
+	}
+	for ; i < l; i++ {
+		chat := chats[i]
+		c.Send(ChatPacket(&ChatOut{
+			From:     chat.From,
+			Message:  chat.Message,
+			Images:   chat.Images,
+			Links:    chat.Links,
+			Historic: true,
+		}))
+
+	}
+}
+
 ```
 
 
