@@ -15,4 +15,50 @@ Nexus is a websocket framework that takes care of common websocket tasks, and cr
 
 Nexus also saves you from spending your whole day un-deadlocking your websocket code. <3
 
+```golang
+unc InitHub(db *storm.DB, mailerClient proto.MailerClient, containerClient container.ContainerClient) *Hub {
+	h := &Hub{
+		Hub:             nexus.NewNexus(),
+		OnlineCount:     0,
+		db:              db,
+		mailerClient:    mailerClient,
+		containerClient: containerClient,
+	}
+	db.Init(&savedChat{})
+
+ h.Hub.Handle("token", h.handleToken)
+	h.Hub.Handle("ping", h.handlePing)
+	h.Hub.Handle("join", h.handleJoin)
+	h.Hub.Handle("chat", h.handleChat)
+
+	h.Hub.All().AfterAdd(func(p *nexus.Pool, c *nexus.Client) {
+		atomic.AddInt64(&h.OnlineCount, 1)
+		h.Hub.All().Broadcast(&nexus.Packet{
+			Type: "online",
+			Data: strconv.Itoa(int(h.OnlineCount)),
+		})
+
+	})
+	h.Hub.All().AfterRemove(func(p *nexus.Pool, c *nexus.Client) {
+		atomic.AddInt64(&h.OnlineCount, -1)
+		h.Hub.All().Broadcast(&nexus.Packet{
+			Type: "online",
+			Data: strconv.Itoa(int(h.OnlineCount)),
+		})
+
+		if user, ok := c.Env["user"]; ok {
+			cUser := user.(*ChatUser)
+			allUsersMu.Lock()
+			delete(allUsers, cUser)
+			allUsersMu.Unlock()
+			p.Broadcast(&nexus.Packet{
+				Type: "leave-user",
+				Data: cUser.Name,
+			})
+
+		}
+	})
+```
+
+
 Cheers! I'll add more later as I think of ways to keep it simple with websockets
