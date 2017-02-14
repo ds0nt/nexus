@@ -16,17 +16,16 @@ Nexus is a websocket framework that takes care of common websocket tasks, and cr
 Nexus also saves you from spending your whole day un-deadlocking your websocket code. <3
 
 ```golang
-unc InitHub(db *storm.DB, mailerClient proto.MailerClient, containerClient container.ContainerClient) *Hub {
+type Hub struct {
+	Hub *nexus.Nexus
+}
+
+func InitHub(db *storm.DB, mailerClient proto.MailerClient, containerClient container.ContainerClient) *Hub {
 	h := &Hub{
 		Hub:             nexus.NewNexus(),
-		OnlineCount:     0,
-		db:              db,
-		mailerClient:    mailerClient,
-		containerClient: containerClient,
 	}
 	db.Init(&savedChat{})
-
- h.Hub.Handle("token", h.handleToken)
+	h.Hub.Handle("token", h.handleToken)
 	h.Hub.Handle("ping", h.handlePing)
 	h.Hub.Handle("join", h.handleJoin)
 	h.Hub.Handle("chat", h.handleChat)
