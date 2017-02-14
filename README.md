@@ -14,3 +14,5 @@ Nexus is a websocket framework that takes care of common websocket tasks, and cr
    - Clients are automatically removed from all the pools when they disconnect.
 
 Nexus also saves you from spending your whole day un-deadlocking your websocket code. <3
+
+Cheers! I'll add more later as I think of ways to keep it simple with websockets
