@@ -1,14 +1,15 @@
 package nexus
 
 import (
+	"fmt"
 	"io"
 	"sync"
 
-	"github.com/Sirupsen/logrus"
 	"golang.org/x/net/websocket"
 )
 
 type Nexus struct {
+	Verbose    bool
 	all        *Pool
 	handlersMu sync.Mutex
 	handlers   map[string]Handler
@@ -20,6 +21,22 @@ func NewNexus() *Nexus {
 		handlers: map[string]Handler{},
 	}
 	return &n
+}
+
+func (n *Nexus) debugf(format string, args ...interface{}) {
+	if n.Verbose {
+		fmt.Printf(format, args...)
+	}
+}
+
+func (n *Nexus) debug(args ...interface{}) {
+	if n.Verbose {
+		fmt.Println(args...)
+	}
+}
+
+func (n *Nexus) errorf(format string, args ...interface{}) {
+	fmt.Printf(format, args...)
 }
 
 func (n *Nexus) All() *Pool {
@@ -47,13 +64,13 @@ func (n *Nexus) Serve(ws *websocket.Conn) {
 		for {
 			select {
 			case msg := <-client.messageChan:
-				// logrus.Printf("sending message %v to %v", msg, client)
+				n.debugf("sending message %v to %v", msg, client)
 				err := websocket.JSON.Send(ws, msg)
 				if err != nil {
-					logrus.Debugf("error writing to websocket %v", msg)
+					n.errorf("error writing to websocket %v", msg)
 				}
 			case <-client.context.Done():
-				logrus.Debugf("stopping websocket write loop due to context closed")
+				n.debugf("stopping websocket write loop due to context closed")
 				return
 			}
 		}
@@ -63,7 +80,7 @@ func (n *Nexus) Serve(ws *websocket.Conn) {
 	for {
 		select {
 		case <-client.context.Done():
-			logrus.Debugf("stopping websocket read loop due to context closed")
+			n.debugf("stopping websocket read loop due to context closed")
 			return
 		default:
 			p := Packet{}
@@ -71,20 +88,20 @@ func (n *Nexus) Serve(ws *websocket.Conn) {
 			if err != nil {
 				if err == io.EOF {
 					// remove connection
-					logrus.Println(err)
+					n.errorf("got eof error on read", err)
 					return
 				}
-				logrus.Println(err)
+				n.errorf("got websocket error on receive", err)
 				return
 			}
-			// logrus.Printf("received message %v from %v", p, client)
+			n.debugf("received message %v from %v", p, client)
 
 			handler, ok := n.handlers[p.Type]
 			if !ok {
-				logrus.Debugf("handler %s does not exist", p.Type, client.name)
+				n.debugf("handler %s does not exist", p.Type, client.name)
 				continue
 			} else {
-				handler(client, &p)
+				go handler(client, &p)
 			}
 		}
 	}

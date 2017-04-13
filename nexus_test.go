@@ -1,21 +1,25 @@
 package nexus
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"golang.org/x/net/websocket"
 )
 
-const testOrigin = "http://localhost"
-const testListenAddr = ":54222"
-const testDialAddr = "ws://localhost:54222/"
+const testOrigin = "http://127.0.0.1:55511"
+const testListenAddr = ":55511"
+const testDialAddr = "ws://127.0.0.1:55511/"
 
 func TestMain(t *testing.M) {
 	go startTestServer()
 
+	time.Sleep(1 * time.Second)
 	t.Run()
 }
 
@@ -189,5 +193,34 @@ func TestNexusBadHandler(t *testing.T) {
 	}
 	log.Printf("Receive %v", p)
 	log.Printf("Expects read error: got %v", err)
+	ws.Close()
+}
+
+func TestNexusConnectionTime(t *testing.T) {
+	fmt.Println("Test Nexus Connection Time")
+	ws, err := websocket.Dial(testDialAddr, "", testOrigin)
+	if err != nil {
+		panic(err)
+	}
+
+	p := Packet{
+		Type: "test1",
+		Data: "test",
+	}
+
+	for i := 0; i < 15; i++ {
+		log.Printf("Sending %v", p)
+		err = websocket.JSON.Send(ws, &p)
+		assert.Nil(t, err)
+		time.Sleep(time.Second / 10)
+
+		// connection should stay alive
+		err = websocket.JSON.Receive(ws, &p)
+		assert.Nil(t, err)
+		log.Printf("Receive %v", p)
+
+		time.Sleep(time.Second / 1000)
+	}
+
 	ws.Close()
 }
