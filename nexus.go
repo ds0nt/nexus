@@ -1,11 +1,14 @@
 package nexus
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
+	"log"
+	"net/http"
 	"sync"
 
-	"golang.org/x/net/websocket"
+	"github.com/gorilla/websocket"
 )
 
 type Nexus struct {
@@ -50,8 +53,17 @@ func (n *Nexus) Handle(t string, handler Handler) {
 	n.handlers[t] = handler
 }
 
-// Echo the data received on the WebSocket.
-func (n *Nexus) Serve(ws *websocket.Conn) {
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+}
+
+func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
+	ws, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Println(err)
+		return
+	}
 
 	client := newClient(ws)
 	defer client.close()
@@ -65,7 +77,7 @@ func (n *Nexus) Serve(ws *websocket.Conn) {
 			select {
 			case msg := <-client.messageChan:
 				n.debugf("sending message %v to %v", msg, client)
-				err := websocket.JSON.Send(ws, msg)
+				err := ws.WriteJSON(msg)
 				if err != nil {
 					n.errorf("error writing to websocket %v", msg)
 				}
@@ -84,7 +96,7 @@ func (n *Nexus) Serve(ws *websocket.Conn) {
 			return
 		default:
 			p := Packet{}
-			err := websocket.JSON.Receive(ws, &p)
+			_, data, err := ws.ReadMessage()
 			if err != nil {
 				if err == io.EOF {
 					// remove connection
@@ -93,6 +105,11 @@ func (n *Nexus) Serve(ws *websocket.Conn) {
 				}
 				n.errorf("got websocket error on receive", err)
 				return
+			}
+			err = json.Unmarshal(data, &p)
+			if err != nil {
+				n.errorf("received malformed json", err, p)
+				continue
 			}
 			n.debugf("received message %v from %v", p, client)
 

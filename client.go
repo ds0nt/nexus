@@ -3,7 +3,7 @@ package nexus
 import (
 	"context"
 
-	ws "golang.org/x/net/websocket"
+	"github.com/gorilla/websocket"
 )
 
 type Client struct {
@@ -14,7 +14,7 @@ type Client struct {
 	Env         map[interface{}]interface{}
 }
 
-func newClient(conn *ws.Conn) *Client {
+func newClient(conn *websocket.Conn) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Client{
 		name:        conn.RemoteAddr().String(),

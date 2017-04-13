@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"golang.org/x/net/websocket"
+	"github.com/gorilla/websocket"
 )
 
 const testOrigin = "http://127.0.0.1:55511"
@@ -39,12 +39,13 @@ func startTestServer() {
 		})
 	})
 	// websocket.Dial()
-	http.ListenAndServe(testListenAddr, websocket.Handler(n.Serve))
+	http.ListenAndServe(testListenAddr, http.HandlerFunc(n.Handler))
 }
 
 func TestNexus(t *testing.T) {
 
-	ws, err := websocket.Dial(testDialAddr, "", testOrigin)
+	ws, _, err := websocket.DefaultDialer.Dial(testDialAddr, nil)
+	defer ws.Close()
 	if err != nil {
 		panic(err)
 	}
@@ -53,11 +54,11 @@ func TestNexus(t *testing.T) {
 		Data: "rawr",
 	}
 	log.Printf("Sending %v", p)
-	err = websocket.JSON.Send(ws, &p)
+	err = ws.WriteJSON(&p)
 	if err != nil {
 		panic(err)
 	}
-	err = websocket.JSON.Receive(ws, &p)
+	err = ws.ReadJSON(&p)
 	if err != nil {
 		panic(err)
 	}
@@ -72,11 +73,11 @@ func TestNexus(t *testing.T) {
 		Data: "rawr",
 	}
 	log.Printf("Sending %v", p)
-	err = websocket.JSON.Send(ws, &p)
+	err = ws.WriteJSON(&p)
 	if err != nil {
 		panic(err)
 	}
-	err = websocket.JSON.Receive(ws, &p)
+	err = ws.ReadJSON(&p)
 	if err != nil {
 		panic(err)
 	}
@@ -86,15 +87,16 @@ func TestNexus(t *testing.T) {
 		return
 	}
 
-	ws.Close()
 }
 
 func TestNexusTwice(t *testing.T) {
 
-	ws, err := websocket.Dial(testDialAddr, "", testOrigin)
+	ws, _, err := websocket.DefaultDialer.Dial(testDialAddr, nil)
+	defer ws.Close()
 	if err != nil {
 		panic(err)
 	}
+
 	err = ws.SetReadDeadline(time.Now().Add(time.Millisecond * 10))
 	if err != nil {
 		panic(err)
@@ -104,11 +106,11 @@ func TestNexusTwice(t *testing.T) {
 		Data: "rawr",
 	}
 	log.Printf("Sending %v", p)
-	err = websocket.JSON.Send(ws, &p)
+	err = ws.WriteJSON(&p)
 	if err != nil {
 		panic(err)
 	}
-	err = websocket.JSON.Receive(ws, &p)
+	err = ws.ReadJSON(&p)
 	if err != nil {
 		panic(err)
 	}
@@ -123,11 +125,11 @@ func TestNexusTwice(t *testing.T) {
 		Data: "rawr",
 	}
 	log.Printf("Sending %v", p)
-	err = websocket.JSON.Send(ws, &p)
+	err = ws.WriteJSON(&p)
 	if err != nil {
 		panic(err)
 	}
-	err = websocket.JSON.Receive(ws, &p)
+	err = ws.ReadJSON(&p)
 	if err != nil {
 		panic(err)
 	}
@@ -136,13 +138,11 @@ func TestNexusTwice(t *testing.T) {
 		t.Fail()
 		return
 	}
-
-	ws.Close()
 }
 
 func TestNexusBadMessage(t *testing.T) {
 
-	ws, err := websocket.Dial(testDialAddr, "", testOrigin)
+	ws, _, err := websocket.DefaultDialer.Dial(testDialAddr, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -152,11 +152,11 @@ func TestNexusBadMessage(t *testing.T) {
 	}
 	p := "this-is-not-a-packet-at-all"
 	log.Printf("Sending %v", p)
-	err = websocket.JSON.Send(ws, p)
+	err = ws.WriteJSON(p)
 	if err != nil {
 		panic(err)
 	}
-	err = websocket.JSON.Receive(ws, &p)
+	err = ws.ReadJSON(&p)
 	if err == nil {
 		panic("Expected error")
 	}
@@ -167,7 +167,7 @@ func TestNexusBadMessage(t *testing.T) {
 
 func TestNexusBadHandler(t *testing.T) {
 
-	ws, err := websocket.Dial(testDialAddr, "", testOrigin)
+	ws, _, err := websocket.DefaultDialer.Dial(testDialAddr, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -181,13 +181,13 @@ func TestNexusBadHandler(t *testing.T) {
 		Data: "nope.",
 	}
 	log.Printf("Sending %v", p)
-	err = websocket.JSON.Send(ws, &p)
+	err = ws.WriteJSON(&p)
 	if err != nil {
 		panic(err)
 	}
 
 	// connection should stay alive
-	err = websocket.JSON.Receive(ws, &p)
+	err = ws.ReadJSON(&p)
 	if err == nil {
 		panic("Expected read timeout error")
 	}
@@ -198,7 +198,7 @@ func TestNexusBadHandler(t *testing.T) {
 
 func TestNexusConnectionTime(t *testing.T) {
 	fmt.Println("Test Nexus Connection Time")
-	ws, err := websocket.Dial(testDialAddr, "", testOrigin)
+	ws, _, err := websocket.DefaultDialer.Dial(testDialAddr, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -210,12 +210,12 @@ func TestNexusConnectionTime(t *testing.T) {
 
 	for i := 0; i < 15; i++ {
 		log.Printf("Sending %v", p)
-		err = websocket.JSON.Send(ws, &p)
+		err = ws.WriteJSON(&p)
 		assert.Nil(t, err)
 		time.Sleep(time.Second / 10)
 
 		// connection should stay alive
-		err = websocket.JSON.Receive(ws, &p)
+		err = ws.ReadJSON(&p)
 		assert.Nil(t, err)
 		log.Printf("Receive %v", p)
 
