@@ -43,7 +43,7 @@ func (p *Pool) Remove(c *Client) {
 
 func (p *Pool) Broadcast(packet *Packet) {
 	for c, _ := range p.clientMap {
-		c.messageChan <- packet
+		c.Send(packet)
 	}
 }
 
