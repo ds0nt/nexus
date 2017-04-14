@@ -31,7 +31,10 @@ func (c *Client) close() {
 }
 
 func (c *Client) Send(p *Packet) {
-	c.messageChan <- p
+	select {
+	case <-c.context.Done():
+	case c.messageChan <- p:
+	}
 }
 
 func (c *Client) String() string {
