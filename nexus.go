@@ -81,7 +81,7 @@ func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 				if err != nil {
 					n.errorf("error writing to websocket %v", msg)
 				}
-			case <-client.context.Done():
+			case <-client.Context.Done():
 				n.debugf("stopping websocket write loop due to context closed")
 				return
 			}
@@ -91,7 +91,7 @@ func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 	// read loop
 	for {
 		select {
-		case <-client.context.Done():
+		case <-client.Context.Done():
 			n.debugf("stopping websocket read loop due to context closed")
 			return
 		default:

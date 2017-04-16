@@ -10,7 +10,7 @@ import (
 type Client struct {
 	name        string
 	closed      bool
-	context     context.Context
+	Context     context.Context
 	cancel      context.CancelFunc
 	messageChan chan *Packet
 	Env         map[interface{}]interface{}
@@ -22,7 +22,7 @@ func newClient(conn *websocket.Conn) *Client {
 	return &Client{
 		sendCloseMu: sync.Mutex{},
 		name:        conn.RemoteAddr().String(),
-		context:     ctx,
+		Context:     ctx,
 		cancel:      cancel,
 		messageChan: make(chan *Packet, 100),
 		Env:         make(map[interface{}]interface{}),
