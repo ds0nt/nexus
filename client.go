@@ -7,14 +7,24 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+type SendHandler func(*Packet)
+
+func (p *Client) BeforeSend(handler SendHandler) {
+	p.sendHandlerMu.Lock()
+	p.sendHandlers = append(p.sendHandlers, handler)
+	p.sendHandlerMu.Unlock()
+}
+
 type Client struct {
-	name        string
-	closed      bool
-	Context     context.Context
-	cancel      context.CancelFunc
-	messageChan chan *Packet
-	Env         map[interface{}]interface{}
-	sendCloseMu sync.Mutex
+	name          string
+	closed        bool
+	Context       context.Context
+	cancel        context.CancelFunc
+	messageChan   chan *Packet
+	Env           map[interface{}]interface{}
+	sendCloseMu   sync.Mutex
+	sendHandlers  []SendHandler
+	sendHandlerMu sync.Mutex
 }
 
 func newClient(conn *websocket.Conn) *Client {
@@ -38,6 +48,9 @@ func (c *Client) close() {
 }
 
 func (c *Client) Send(p *Packet) {
+	for _, h := range c.sendHandlers {
+		h(p)
+	}
 	if c.closed {
 		return
 	}
