@@ -103,7 +103,7 @@ func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 						n.errorf("error writing to websocket %v", msg)
 					}
 				case PacketFormatDelimited:
-					err := ws.WriteMessage(websocket.BinaryMessage, marshalDelimitedPacket(*msg))
+					err := ws.WriteMessage(websocket.TextMessage, marshalDelimitedPacket(*msg))
 					if err != nil {
 						n.errorf("error writing to websocket %v", msg)
 					}
@@ -149,7 +149,7 @@ func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 			}
 			// n.debugf()
 
-			fmt.Println("received message %v from %v", p, client)
+			fmt.Printf("received message %v from %v", p, client)
 			handler, ok := n.handlers[p.Type]
 			if !ok {
 				n.debugf("handler %s does not exist", p.Type, client.name)
@@ -164,7 +164,7 @@ func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 func unmarshalDelimitedPacket(bytes []byte) (*Packet, error) {
 	str := string(bytes)
 	fmt.Println(str)
-	peices := strings.SplitN(str, ":", 1)
+	peices := strings.SplitN(str, ":", 2)
 	if len(peices) != 2 {
 		return nil, errors.New("delimiter not found in message bytes")
 	}
@@ -179,7 +179,7 @@ func unmarshalDelimitedPacket(bytes []byte) (*Packet, error) {
 
 	p := Packet{
 		Type: peices[1][:n],
-		Data: peices[1][n+1:],
+		Data: peices[1][n:],
 	}
 	return &p, nil
 }
