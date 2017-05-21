@@ -8,20 +8,35 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/pkg/errors"
+
+	"strings"
+
+	"strconv"
+
 	"github.com/gorilla/websocket"
 )
 
+type PacketFormat int
+
+const (
+	PacketFormatJSON = iota
+	PacketFormatDelimited
+)
+
 type Nexus struct {
-	Verbose    bool
-	all        *Pool
-	handlersMu sync.Mutex
-	handlers   map[string]Handler
+	Verbose      bool
+	all          *Pool
+	handlersMu   sync.Mutex
+	handlers     map[string]Handler
+	PacketFormat PacketFormat
 }
 
 func NewNexus() *Nexus {
 	n := Nexus{
-		all:      NewPool(),
-		handlers: map[string]Handler{},
+		all:          NewPool(),
+		handlers:     map[string]Handler{},
+		PacketFormat: PacketFormatJSON,
 	}
 	return &n
 }
@@ -77,9 +92,18 @@ func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 			select {
 			case msg := <-client.messageChan:
 				n.debugf("sending message %v to %v", msg, client)
-				err := ws.WriteJSON(msg)
-				if err != nil {
-					n.errorf("error writing to websocket %v", msg)
+
+				switch n.PacketFormat {
+				case PacketFormatJSON:
+					err := ws.WriteJSON(msg)
+					if err != nil {
+						n.errorf("error writing to websocket %v", msg)
+					}
+				case PacketFormatDelimited:
+					err := ws.WriteMessage(websocket.TextMessage, marshalDelimitedPacket(msg))
+					if err != nil {
+						n.errorf("error writing to websocket %v", msg)
+					}
 				}
 			case <-client.Context.Done():
 				n.debugf("stopping websocket write loop due to context closed")
@@ -95,7 +119,7 @@ func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 			n.debugf("stopping websocket read loop due to context closed")
 			return
 		default:
-			p := Packet{}
+			p := &Packet{}
 			_, data, err := ws.ReadMessage()
 			if err != nil {
 				if err == io.EOF {
@@ -106,10 +130,18 @@ func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 				n.errorf("got websocket error on receive", err)
 				return
 			}
-			err = json.Unmarshal(data, &p)
-			if err != nil {
-				n.errorf("received malformed json", err, p)
-				continue
+			if n.PacketFormat == PacketFormatJSON {
+				err = json.Unmarshal(data, p)
+				if err != nil {
+					n.errorf("received malformed json", err, p)
+					continue
+				}
+			} else if n.PacketFormat == PacketFormatDelimited {
+				p, err = unmarshalDelimitedPacket(data)
+				if err != nil {
+					n.errorf("received malformed delimited message", err, p)
+					continue
+				}
 			}
 			n.debugf("received message %v from %v", p, client)
 
@@ -118,8 +150,34 @@ func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 				n.debugf("handler %s does not exist", p.Type, client.name)
 				continue
 			} else {
-				go handler(client, &p)
+				go handler(client, p)
 			}
 		}
 	}
+}
+
+func unmarshalDelimitedPacket(bytes []byte) (*Packet, error) {
+	str := string(bytes)
+	peices := strings.Split(str, ":")
+	if len(peices) != 2 {
+		return nil, errors.New("delimiter not found in message bytes")
+	}
+
+	n, err := strconv.Atoi(peices[0])
+	if err != nil {
+		return nil, errors.Errorf("first field should be an integer, but was %s", peices[0])
+	}
+	if len(peices[1]) < n {
+		return nil, errors.Errorf("message ended unexpectedly, message length was not the expected size")
+	}
+
+	p := Packet{
+		Type: peices[1][:n],
+		Data: peices[1][n+1:],
+	}
+	return &p, nil
+}
+
+func marshalDelimitedPacket(p *Packet) (bytes []byte) {
+	return []byte(fmt.Sprintf("%d:%s%s", len(p.Type), p.Type, p.Data))
 }
