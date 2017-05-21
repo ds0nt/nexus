@@ -103,7 +103,7 @@ func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 						n.errorf("error writing to websocket %v", msg)
 					}
 				case PacketFormatDelimited:
-					err := ws.WriteMessage(websocket.TextMessage, marshalDelimitedPacket(*msg))
+					err := ws.WriteMessage(websocket.BinaryMessage, marshalDelimitedPacket(*msg))
 					if err != nil {
 						n.errorf("error writing to websocket %v", msg)
 					}
@@ -163,6 +163,7 @@ func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 
 func unmarshalDelimitedPacket(bytes []byte) (*Packet, error) {
 	str := string(bytes)
+	fmt.Println(str)
 	peices := strings.SplitN(str, ":", 1)
 	if len(peices) != 2 {
 		return nil, errors.New("delimiter not found in message bytes")
