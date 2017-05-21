@@ -100,7 +100,7 @@ func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 						n.errorf("error writing to websocket %v", msg)
 					}
 				case PacketFormatDelimited:
-					err := ws.WriteMessage(websocket.TextMessage, marshalDelimitedPacket(msg))
+					err := ws.WriteMessage(websocket.TextMessage, marshalDelimitedPacket(*msg))
 					if err != nil {
 						n.errorf("error writing to websocket %v", msg)
 					}
@@ -178,6 +178,6 @@ func unmarshalDelimitedPacket(bytes []byte) (*Packet, error) {
 	return &p, nil
 }
 
-func marshalDelimitedPacket(p *Packet) (bytes []byte) {
+func marshalDelimitedPacket(p Packet) (bytes []byte) {
 	return []byte(fmt.Sprintf("%d:%s%s", len(p.Type), p.Type, p.Data))
 }
