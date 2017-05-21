@@ -91,6 +91,9 @@ func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 		for {
 			select {
 			case msg := <-client.messageChan:
+				if msg == nil {
+					continue
+				}
 				n.debugf("sending message %v to %v", msg, client)
 
 				switch n.PacketFormat {
@@ -124,27 +127,29 @@ func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				if err == io.EOF {
 					// remove connection
-					n.errorf("got eof error on read", err)
+					n.errorf("got eof error on read %s", err.Error())
 					return
 				}
-				n.errorf("got websocket error on receive", err)
+				n.errorf("got websocket error on receive %s", err.Error())
 				return
 			}
-			if n.PacketFormat == PacketFormatJSON {
+			switch n.PacketFormat {
+			case PacketFormatJSON:
 				err = json.Unmarshal(data, p)
 				if err != nil {
-					n.errorf("received malformed json", err, p)
+					n.errorf("received malformed json %s %v", err.Error(), p)
 					continue
 				}
-			} else if n.PacketFormat == PacketFormatDelimited {
+			case PacketFormatDelimited:
 				p, err = unmarshalDelimitedPacket(data)
 				if err != nil {
-					n.errorf("received malformed delimited message", err, p)
+					n.errorf("received malformed delimited message %s %v", err.Error(), p)
 					continue
 				}
 			}
-			n.debugf("received message %v from %v", p, client)
+			// n.debugf()
 
+			fmt.Println("received message %v from %v", p, client)
 			handler, ok := n.handlers[p.Type]
 			if !ok {
 				n.debugf("handler %s does not exist", p.Type, client.name)
@@ -158,7 +163,7 @@ func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 
 func unmarshalDelimitedPacket(bytes []byte) (*Packet, error) {
 	str := string(bytes)
-	peices := strings.Split(str, ":")
+	peices := strings.SplitN(str, ":", 1)
 	if len(peices) != 2 {
 		return nil, errors.New("delimiter not found in message bytes")
 	}
@@ -178,6 +183,6 @@ func unmarshalDelimitedPacket(bytes []byte) (*Packet, error) {
 	return &p, nil
 }
 
-func marshalDelimitedPacket(p Packet) (bytes []byte) {
+func marshalDelimitedPacket(p Packet) []byte {
 	return []byte(fmt.Sprintf("%d:%s%s", len(p.Type), p.Type, p.Data))
 }
