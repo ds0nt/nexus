@@ -73,6 +73,10 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
+func (n *Nexus) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	n.Handler(w, r)
+}
+
 func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
