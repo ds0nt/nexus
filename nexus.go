@@ -151,9 +151,8 @@ func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 			}
-			// n.debugf()
 
-			fmt.Printf("received message %v from %v", p, client)
+			n.debugf("received message %v from %v", p, client)
 			handler, ok := n.handlers[p.Type]
 			if !ok {
 				n.debugf("handler %s does not exist", p.Type, client.name)
