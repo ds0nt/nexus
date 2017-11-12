@@ -68,7 +68,7 @@ func (n *Nexus) Handle(t string, handler Handler) {
 	n.handlers[t] = handler
 }
 
-var upgrader = websocket.Upgrader{
+var Upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 }
@@ -78,7 +78,7 @@ func (n *Nexus) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
-	ws, err := upgrader.Upgrade(w, r, nil)
+	ws, err := Upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println(err)
 		return
