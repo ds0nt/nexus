@@ -25,11 +25,13 @@ type Client struct {
 	sendCloseMu   sync.Mutex
 	sendHandlers  []SendHandler
 	sendHandlerMu sync.Mutex
+	Conn          *websocket.Conn
 }
 
 func newClient(conn *websocket.Conn) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Client{
+		Conn:        conn,
 		sendCloseMu: sync.Mutex{},
 		name:        conn.RemoteAddr().String(),
 		Context:     ctx,
