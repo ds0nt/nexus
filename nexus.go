@@ -14,6 +14,8 @@ import (
 
 	"strconv"
 
+	"context"
+
 	"github.com/gorilla/websocket"
 )
 
@@ -25,18 +27,23 @@ const (
 )
 
 type Nexus struct {
-	Verbose      bool
-	all          *Pool
-	handlersMu   sync.Mutex
-	handlers     map[string]Handler
-	PacketFormat PacketFormat
+	Verbose         bool
+	all             *Pool
+	handlersMu      sync.Mutex
+	handlers        map[string]Handler
+	streamers       map[string]Streamer
+	PacketFormat    PacketFormat
+	streamCancels   map[string]context.CancelFunc
+	streamCancelsMu sync.Mutex
 }
 
 func NewNexus() *Nexus {
 	n := Nexus{
-		all:          NewPool(),
-		handlers:     map[string]Handler{},
-		PacketFormat: PacketFormatJSON,
+		all:           NewPool(),
+		handlers:      map[string]Handler{},
+		streamers:     map[string]Streamer{},
+		PacketFormat:  PacketFormatJSON,
+		streamCancels: map[string]context.CancelFunc{},
 	}
 	return &n
 }
@@ -66,6 +73,13 @@ func (n *Nexus) Handle(t string, handler Handler) {
 	defer n.handlersMu.Unlock()
 
 	n.handlers[t] = handler
+}
+
+func (n *Nexus) StreamHandle(t string, streamer Streamer) {
+	n.handlersMu.Lock()
+	defer n.handlersMu.Unlock()
+
+	n.streamers[t] = streamer
 }
 
 var Upgrader = websocket.Upgrader{
@@ -126,7 +140,6 @@ func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 			n.debugf("stopping websocket read loop due to context closed")
 			return
 		default:
-			p := &Packet{}
 			_, data, err := ws.ReadMessage()
 			if err != nil {
 				if err == io.EOF {
@@ -137,6 +150,8 @@ func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 				n.errorf("got websocket error on receive %s", err.Error())
 				return
 			}
+
+			p := &Packet{}
 			switch n.PacketFormat {
 			case PacketFormatJSON:
 				err = json.Unmarshal(data, p)
@@ -151,17 +166,68 @@ func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 			}
-
 			n.debugf("received message %v from %v", p, client)
-			handler, ok := n.handlers[p.Type]
-			if !ok {
-				n.debugf("handler %s does not exist", p.Type, client.name)
+
+			// kill handler by stream id
+			if strings.HasPrefix(p.Type, "-") {
+				if len(p.StreamID) == 0 {
+					n.errorf("cannot kill stream with no stream id %s", p.StreamID)
+					continue
+				}
+				cancel, ok := n.streamCancels[p.StreamID]
+				if ok {
+					cancel()
+				}
 				continue
-			} else {
-				go handler(client, p)
 			}
+
+			// handle normal
+			handler, ok := n.handlers[p.Type]
+			if ok {
+				go handler(client, p)
+				continue
+			}
+
+			// handle stream (cancelable by kill packet)
+			streamer, ok := n.streamers[p.Type]
+			if ok {
+				if len(p.StreamID) > 0 {
+					go n.handleWithCancel(streamer, client, p)
+				} else {
+					n.errorf("cannot start stream with no stream id %s", p.StreamID)
+				}
+				continue
+			}
+
+			n.debugf("handler %s does not exist", p.Type)
+			continue
 		}
 	}
+}
+
+type Context struct {
+	Client        *Client
+	Packet        *Packet
+	StreamContext context.Context
+}
+
+func (n *Nexus) handleWithCancel(handler Streamer, client *Client, p *Packet) {
+	ctx, cancel := context.WithCancel(client.Context)
+	c := &Context{
+		client,
+		p,
+		ctx,
+	}
+	n.streamCancelsMu.Lock()
+	n.streamCancels[p.StreamID] = cancel
+	n.streamCancelsMu.Unlock()
+	n.debugf("registered stream cancel %s %s", p.Type, p.StreamID)
+	handler(c)
+
+	n.streamCancelsMu.Lock()
+	delete(n.streamCancels, p.StreamID)
+	n.streamCancelsMu.Unlock()
+	n.debugf("deleted stream cancel %s %s", p.Type, p.StreamID)
 }
 
 func unmarshalDelimitedPacket(bytes []byte) (*Packet, error) {

@@ -1,9 +1,9 @@
 package nexus
 
 import (
-	"fmt"
 	"log"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,6 +15,9 @@ import (
 const testOrigin = "http://127.0.0.1:55511"
 const testListenAddr = ":55511"
 const testDialAddr = "ws://127.0.0.1:55511/"
+
+var streamDone = map[string]chan struct{}{}
+var doneMu = sync.Mutex{}
 
 func TestMain(t *testing.M) {
 	go startTestServer()
@@ -38,170 +41,180 @@ func startTestServer() {
 			Data: p.Data + "2",
 		})
 	})
+
+	n.StreamHandle("test3", func(c *Context) {
+		doneMu.Lock()
+		streamDone[c.Packet.StreamID] = make(chan struct{})
+		defer close(streamDone[c.Packet.StreamID])
+		doneMu.Unlock()
+
+		for {
+			select {
+			case <-c.StreamContext.Done():
+				log.Println("stream", c.Packet.StreamID, "closed")
+				return
+			default:
+				c.Client.Send(&Packet{
+					Type: "test3",
+					Data: c.Packet.Data + "3",
+				})
+				time.Sleep(time.Millisecond)
+			}
+		}
+	})
+
 	// websocket.Dial()
 	http.ListenAndServe(testListenAddr, http.HandlerFunc(n.Handler))
 }
 
-func TestNexus(t *testing.T) {
-
+func dial(t *testing.T) *websocket.Conn {
 	ws, _, err := websocket.DefaultDialer.Dial(testDialAddr, nil)
+	assert.Nil(t, err)
+	assert.Nil(t, ws.SetReadDeadline(time.Now().Add(time.Millisecond*10)))
+	return ws
+}
+
+func TestNexus(t *testing.T) {
+	ws := dial(t)
 	defer ws.Close()
-	if err != nil {
-		panic(err)
-	}
+
 	p := Packet{
 		Type: "test1",
 		Data: "rawr",
 	}
 	log.Printf("Sending %v", p)
-	err = ws.WriteJSON(&p)
-	if err != nil {
-		panic(err)
-	}
-	err = ws.ReadJSON(&p)
-	if err != nil {
-		panic(err)
-	}
+	assert.Nil(t, ws.WriteJSON(&p))
+	assert.Nil(t, ws.ReadJSON(&p))
 	log.Printf("Receive %v", p)
-	if p.Data != "rawr1" {
-		t.Fail()
-		return
-	}
+	assert.Equal(t, p.Data, "rawr1")
 
 	p = Packet{
 		Type: "test2",
 		Data: "rawr",
 	}
 	log.Printf("Sending %v", p)
-	err = ws.WriteJSON(&p)
-	if err != nil {
-		panic(err)
-	}
-	err = ws.ReadJSON(&p)
-	if err != nil {
-		panic(err)
-	}
+	assert.Nil(t, ws.WriteJSON(&p))
+	assert.Nil(t, ws.ReadJSON(&p))
 	log.Printf("Receive %v", p)
-	if p.Data != "rawr2" {
-		t.Fail()
-		return
-	}
+	assert.Equal(t, p.Data, "rawr2")
 
+}
+func TestNexusStreamer(t *testing.T) {
+	ws := dial(t)
+	defer ws.Close()
+
+	p := Packet{
+		Type:     "test3",
+		Data:     "rawr",
+		StreamID: "001",
+	}
+	log.Printf("Sending %v", p)
+	assert.Nil(t, ws.WriteJSON(&p))
+
+	p2 := Packet{
+		Type:     "test3",
+		Data:     "wewt",
+		StreamID: "002",
+	}
+	log.Printf("Sending %v", p2)
+	assert.Nil(t, ws.WriteJSON(&p2))
+
+	go func() {
+		time.Sleep(time.Millisecond * 5)
+		killp := Packet{
+			Type:     "-test3",
+			StreamID: "001",
+		}
+		log.Printf("Sending %v", killp)
+		assert.Nil(t, ws.WriteJSON(&killp))
+
+		time.Sleep(time.Millisecond)
+		killp = Packet{
+			Type:     "-test3",
+			StreamID: "002",
+		}
+		log.Printf("Sending %v", killp)
+		assert.Nil(t, ws.WriteJSON(&killp))
+	}()
+
+	x := 0
+	for {
+		select {
+		case <-streamDone["001"]:
+			select {
+			case <-streamDone["002"]:
+				return
+			default:
+			}
+		default:
+			x++
+		}
+		assert.True(t, x < 50, "streamer 001 did not close before 50 messages")
+		err := ws.ReadJSON(&p)
+		if err != nil {
+			assert.True(t, x >= 6, "stream 002 killed before receiving 4 messages with err %s", err.Error())
+		}
+		log.Printf("Receive %v", p)
+		assert.True(t, p.Data == "rawr3" || p.Data == "wewt3")
+
+	}
 }
 
 func TestNexusTwice(t *testing.T) {
-
-	ws, _, err := websocket.DefaultDialer.Dial(testDialAddr, nil)
+	ws := dial(t)
 	defer ws.Close()
-	if err != nil {
-		panic(err)
-	}
 
-	err = ws.SetReadDeadline(time.Now().Add(time.Millisecond * 10))
-	if err != nil {
-		panic(err)
-	}
 	p := Packet{
 		Type: "test1",
 		Data: "rawr",
 	}
 	log.Printf("Sending %v", p)
-	err = ws.WriteJSON(&p)
-	if err != nil {
-		panic(err)
-	}
-	err = ws.ReadJSON(&p)
-	if err != nil {
-		panic(err)
-	}
+	assert.Nil(t, ws.WriteJSON(&p))
+	assert.Nil(t, ws.ReadJSON(&p))
 	log.Printf("Receive %v", p)
-	if p.Data != "rawr1" {
-		t.Fail()
-		return
-	}
+	assert.Equal(t, p.Data, "rawr1")
 
 	p = Packet{
 		Type: "test2",
 		Data: "rawr",
 	}
 	log.Printf("Sending %v", p)
-	err = ws.WriteJSON(&p)
-	if err != nil {
-		panic(err)
-	}
-	err = ws.ReadJSON(&p)
-	if err != nil {
-		panic(err)
-	}
+	assert.Nil(t, ws.WriteJSON(&p))
+	assert.Nil(t, ws.ReadJSON(&p))
 	log.Printf("Receive %v", p)
-	if p.Data != "rawr2" {
-		t.Fail()
-		return
-	}
+	assert.Equal(t, p.Data, "rawr2")
 }
 
 func TestNexusBadMessage(t *testing.T) {
+	ws := dial(t)
+	defer ws.Close()
 
-	ws, _, err := websocket.DefaultDialer.Dial(testDialAddr, nil)
-	if err != nil {
-		panic(err)
-	}
-	err = ws.SetReadDeadline(time.Now().Add(time.Millisecond * 10))
-	if err != nil {
-		panic(err)
-	}
 	p := "this-is-not-a-packet-at-all"
 	log.Printf("Sending %v", p)
-	err = ws.WriteJSON(p)
-	if err != nil {
-		panic(err)
-	}
-	err = ws.ReadJSON(&p)
-	if err == nil {
-		panic("Expected error")
-	}
-	log.Printf("Expects error: got %v", err)
+	assert.Nil(t, ws.WriteJSON(p))
+	assert.NotNil(t, ws.ReadJSON(&p))
 
-	ws.Close()
 }
 
 func TestNexusBadHandler(t *testing.T) {
-
-	ws, _, err := websocket.DefaultDialer.Dial(testDialAddr, nil)
-	if err != nil {
-		panic(err)
-	}
-	err = ws.SetReadDeadline(time.Now().Add(time.Millisecond * 10))
-	if err != nil {
-		panic(err)
-	}
+	ws := dial(t)
+	defer ws.Close()
 
 	p := Packet{
 		Type: "got handler???",
 		Data: "nope.",
 	}
 	log.Printf("Sending %v", p)
-	err = ws.WriteJSON(&p)
-	if err != nil {
-		panic(err)
-	}
+	assert.Nil(t, ws.WriteJSON(&p))
 
 	// connection should stay alive
-	err = ws.ReadJSON(&p)
-	if err == nil {
-		panic("Expected read timeout error")
-	}
-	log.Printf("Receive %v", p)
-	log.Printf("Expects read error: got %v", err)
-	ws.Close()
+	assert.NotNil(t, ws.ReadJSON(&p))
 }
 
 func TestNexusConnectionTime(t *testing.T) {
-	fmt.Println("Test Nexus Connection Time")
-	ws, _, err := websocket.DefaultDialer.Dial(testDialAddr, nil)
-	if err != nil {
-		panic(err)
-	}
+	ws := dial(t)
+	assert.Nil(t, ws.SetReadDeadline(time.Now().Add(time.Second*10)))
+	defer ws.Close()
 
 	p := Packet{
 		Type: "test1",
@@ -210,17 +223,14 @@ func TestNexusConnectionTime(t *testing.T) {
 
 	for i := 0; i < 15; i++ {
 		log.Printf("Sending %v", p)
-		err = ws.WriteJSON(&p)
-		assert.Nil(t, err)
+		assert.Nil(t, ws.WriteJSON(&p))
 		time.Sleep(time.Second / 10)
 
 		// connection should stay alive
-		err = ws.ReadJSON(&p)
-		assert.Nil(t, err)
+		assert.Nil(t, ws.ReadJSON(&p))
 		log.Printf("Receive %v", p)
 
 		time.Sleep(time.Second / 1000)
 	}
 
-	ws.Close()
 }

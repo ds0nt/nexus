@@ -6,8 +6,9 @@ import (
 )
 
 type Packet struct {
-	Type string `json:"type"`
-	Data string `json:"data"`
+	Type     string `json:"type"`
+	Data     string `json:"data"`
+	StreamID string `json:"id"`
 }
 
 func (p *Packet) String() string {
