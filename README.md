@@ -12,6 +12,7 @@ If in json format, it sends and receives messages as shown in the tags
 type Packet struct {
 	Type string `json:"type"`
 	Data string `json:"data"`
+	StreamID string `json:"id"`
 }
 ```
 
@@ -40,6 +41,23 @@ func main() {
 
 	n.Handle("token", handleToken)
 	n.Handle("chat", handleChat)
+
+
+	n.StreamHandle("stream-data", func(c *Context) {
+		for {
+			select {
+			case <-c.StreamContext.Done():
+				log.Println("stream", c.Packet.StreamID, "closed")
+				return
+			default:
+				c.Client.Send(&Packet{
+					Type: "some-data",
+					Data: "data",
+				})
+				time.Sleep(time.Millisecond)
+			}
+		}
+	})
 
 	http.ListenAndServe(":9090", n.Handler)
 }
