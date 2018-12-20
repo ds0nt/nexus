@@ -7,9 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-
 	"github.com/gorilla/websocket"
+	"github.com/stretchr/testify/assert"
 )
 
 const testOrigin = "http://127.0.0.1:55511"

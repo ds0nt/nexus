@@ -1,29 +1,15 @@
 package nexus
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 
-	"github.com/pkg/errors"
-
-	"strings"
-
-	"strconv"
-
-	"context"
-
 	"github.com/gorilla/websocket"
-)
-
-type PacketFormat int
-
-const (
-	PacketFormatJSON = iota
-	PacketFormatDelimited
 )
 
 type Nexus struct {
@@ -32,7 +18,7 @@ type Nexus struct {
 	handlersMu      sync.Mutex
 	handlers        map[string]Handler
 	streamers       map[string]Streamer
-	PacketFormat    PacketFormat
+	Marshaler       PacketMarshaler
 	streamCancels   map[string]context.CancelFunc
 	streamCancelsMu sync.Mutex
 }
@@ -42,7 +28,7 @@ func NewNexus() *Nexus {
 		all:           NewPool(),
 		handlers:      map[string]Handler{},
 		streamers:     map[string]Streamer{},
-		PacketFormat:  PacketFormatJSON,
+		Marshaler:     DefaultJSON,
 		streamCancels: map[string]context.CancelFunc{},
 	}
 	return &n
@@ -113,18 +99,9 @@ func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				n.debugf("sending message %v to %v", msg, client)
-
-				switch n.PacketFormat {
-				case PacketFormatJSON:
-					err := ws.WriteJSON(msg)
-					if err != nil {
-						n.errorf("error writing to websocket %v", msg)
-					}
-				case PacketFormatDelimited:
-					err := ws.WriteMessage(websocket.TextMessage, marshalDelimitedPacket(*msg))
-					if err != nil {
-						n.errorf("error writing to websocket %v", msg)
-					}
+				err := ws.WriteMessage(websocket.TextMessage, n.Marshaler.Marshal(msg))
+				if err != nil {
+					n.errorf("error writing to websocket %v", msg)
 				}
 			case <-client.Context.Done():
 				n.debugf("stopping websocket write loop due to context closed")
@@ -150,22 +127,13 @@ func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 				n.errorf("got websocket error on receive %s", err.Error())
 				return
 			}
-
-			p := &Packet{}
-			switch n.PacketFormat {
-			case PacketFormatJSON:
-				err = json.Unmarshal(data, p)
-				if err != nil {
-					n.errorf("received malformed json %s %v", err.Error(), p)
-					continue
-				}
-			case PacketFormatDelimited:
-				p, err = unmarshalDelimitedPacket(data)
-				if err != nil {
-					n.errorf("received malformed delimited message %s %v", err.Error(), p)
-					continue
-				}
+			fmt.Println(string((data)))
+			p, err := n.Marshaler.Unmarshal(data)
+			if err != nil {
+				n.errorf("received malformed delimited message %s %v", err.Error(), p)
+				continue
 			}
+
 			n.debugf("received message %v from %v", p, client)
 
 			// kill handler by stream id
@@ -228,31 +196,4 @@ func (n *Nexus) handleWithCancel(handler Streamer, client *Client, p *Packet) {
 	delete(n.streamCancels, p.StreamID)
 	n.streamCancelsMu.Unlock()
 	n.debugf("deleted stream cancel %s %s", p.Type, p.StreamID)
-}
-
-func unmarshalDelimitedPacket(bytes []byte) (*Packet, error) {
-	str := string(bytes)
-	fmt.Println(str)
-	peices := strings.SplitN(str, ":", 2)
-	if len(peices) != 2 {
-		return nil, errors.New("delimiter not found in message bytes")
-	}
-
-	n, err := strconv.Atoi(peices[0])
-	if err != nil {
-		return nil, errors.Errorf("first field should be an integer, but was %s", peices[0])
-	}
-	if len(peices[1]) < n {
-		return nil, errors.Errorf("message ended unexpectedly, message length was not the expected size")
-	}
-
-	p := Packet{
-		Type: peices[1][:n],
-		Data: peices[1][n:],
-	}
-	return &p, nil
-}
-
-func marshalDelimitedPacket(p Packet) []byte {
-	return []byte(fmt.Sprintf("%d:%s%s", len(p.Type), p.Type, p.Data))
 }
