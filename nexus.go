@@ -127,7 +127,9 @@ func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 				n.errorf("got websocket error on receive %s", err.Error())
 				return
 			}
-			fmt.Println(string((data)))
+
+			n.debugf(string((data)))
+
 			p, err := n.Marshaler.Unmarshal(data)
 			if err != nil {
 				n.errorf("received malformed delimited message %s %v", err.Error(), p)
