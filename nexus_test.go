@@ -41,21 +41,21 @@ func startTestServer() {
 		})
 	})
 
-	n.StreamHandle("test3", func(c *Context) {
+	n.StreamHandle("test3", func(c *Context, p *Packet) {
 		doneMu.Lock()
-		streamDone[c.Packet.StreamID] = make(chan struct{})
-		defer close(streamDone[c.Packet.StreamID])
+		streamDone[p.StreamID] = make(chan struct{})
+		defer close(streamDone[p.StreamID])
 		doneMu.Unlock()
 
 		for {
 			select {
 			case <-c.StreamContext.Done():
-				log.Println("stream", c.Packet.StreamID, "closed")
+				log.Println("stream", p.StreamID, "closed")
 				return
 			default:
 				c.Client.Send(&Packet{
 					Type: "test3",
-					Data: c.Packet.Data + "3",
+					Data: p.Data + "3",
 				})
 				time.Sleep(time.Millisecond)
 			}

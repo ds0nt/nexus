@@ -13,23 +13,20 @@ import (
 )
 
 type Nexus struct {
-	Verbose         bool
-	all             *Pool
-	handlersMu      sync.Mutex
-	handlers        map[string]Handler
-	streamers       map[string]Streamer
-	Marshaler       PacketMarshaler
-	streamCancels   map[string]context.CancelFunc
-	streamCancelsMu sync.Mutex
+	Verbose    bool
+	all        *Pool
+	handlersMu sync.Mutex
+	handlers   map[string]Handler
+	streamers  map[string]Streamer
+	Marshaler  PacketMarshaler
 }
 
 func NewNexus() *Nexus {
 	n := Nexus{
-		all:           NewPool(),
-		handlers:      map[string]Handler{},
-		streamers:     map[string]Streamer{},
-		Marshaler:     DefaultJSON,
-		streamCancels: map[string]context.CancelFunc{},
+		all:       NewPool(),
+		handlers:  map[string]Handler{},
+		streamers: map[string]Streamer{},
+		Marshaler: DefaultJSON,
 	}
 	return &n
 }
@@ -144,7 +141,7 @@ func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 					n.errorf("cannot kill stream with no stream id %s", p.StreamID)
 					continue
 				}
-				cancel, ok := n.streamCancels[p.StreamID]
+				cancel, ok := client.streamCancels[p.StreamID]
 				if ok {
 					cancel()
 				}
@@ -177,7 +174,6 @@ func (n *Nexus) Handler(w http.ResponseWriter, r *http.Request) {
 
 type Context struct {
 	Client        *Client
-	Packet        *Packet
 	StreamContext context.Context
 }
 
@@ -185,17 +181,16 @@ func (n *Nexus) handleWithCancel(handler Streamer, client *Client, p *Packet) {
 	ctx, cancel := context.WithCancel(client.Context)
 	c := &Context{
 		client,
-		p,
 		ctx,
 	}
-	n.streamCancelsMu.Lock()
-	n.streamCancels[p.StreamID] = cancel
-	n.streamCancelsMu.Unlock()
+	client.streamCancelsMu.Lock()
+	client.streamCancels[p.StreamID] = cancel
+	client.streamCancelsMu.Unlock()
 	n.debugf("registered stream cancel %s %s", p.Type, p.StreamID)
-	handler(c)
+	handler(c, p)
 
-	n.streamCancelsMu.Lock()
-	delete(n.streamCancels, p.StreamID)
-	n.streamCancelsMu.Unlock()
+	client.streamCancelsMu.Lock()
+	delete(client.streamCancels, p.StreamID)
+	client.streamCancelsMu.Unlock()
 	n.debugf("deleted stream cancel %s %s", p.Type, p.StreamID)
 }
